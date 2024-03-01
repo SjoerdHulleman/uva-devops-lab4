@@ -113,8 +113,8 @@
     - name: Add join cmd to dummy host
       ansible.builtin.add_host:
         name: "join_cmd_holder"
-        cmd: "{{ join_cmd }}"
-        cmd_output: "{{ join_cmd.stdout }}"
+        cmd: "{{ join_cmd.stdout }}"
+        join_cmd: "{{ join_cmd }}"
 
 - hosts: worker
   tasks:
@@ -124,7 +124,7 @@
 
     - name: join
       ansible.builtin.debug:
-        msg: "Join command output is {{ hostvars['join_cmd_holder']['cmd_output'] }}"
+        msg: "Join command: {{ hostvars['join_cmd_holder']['join_cmd'] }}"
 
 
 - hosts: master
