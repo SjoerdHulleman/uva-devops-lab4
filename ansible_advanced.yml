@@ -1,0 +1,125 @@
+- hosts: all
+  become: true
+  tasks:
+
+    - name: update Debian
+      ansible.builtin.apt:
+        update_cache: yes
+      when: ansible_os_family == 'Debian'
+
+    - name: update RedHat
+      ansible.builtin.yum:
+        update_cache: yes
+      when: ansible_os_family == 'RedHat'
+
+    - name: Install pip
+      package:
+        name: python3-pip
+
+    - name: Install boto3 package
+      ansible.builtin.pip:
+        name: boto3
+
+- hosts: cluster
+  gather_facts: yes
+  become: yes
+  tasks:
+    - ansible.builtin.package:
+        name:
+            - docker
+            - docker-engine
+            - docker.io
+            - containerd
+            - runc
+        state: absent
+
+    - ansible.builtin.package:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+
+    - package:
+        name:
+        - docker-ce
+        - docker-ce-cli
+        - containerd.io
+        state: present
+      become: yes
+
+    - name: Restart service docker, in all cases
+      service:
+        name: docker
+        state: restarted
+      ignore_errors: yes
+      become: yes
+
+    - ansible.builtin.command: docker run hello-world
+      register: docker_output
+
+    # Make sure we leave the Swarm, else we get an error when we try to join all workers in the Swarm
+    - ansible.builtin.shell: "docker swarm leave --force"
+      become: yes
+      ignore_errors: yes
+
+
+- hosts: master
+  tasks:
+    - name: Start EC2 intsance
+      amazon.aws.ec2_instance:
+        name: "Lab4-Ansible-Started-EC2"
+        # Not a good practice to keep your keys like this, but this Amazon environment will be deleted when the sandbox is closed
+        access_key: AKIAW3MEFPV5WQPDMEBF
+        secret_key: eqhL7lj4sueurK/23TxJ6kJ+xT1tAV5JWRDbk81U
+        region: us-east-1
+        key_name: "Lab4Key"
+        vpc_subnet_id: subnet-0503efb34c7fdc96f
+        instance_type: t2.micro
+        image_id: ami-07d9b9ddc6cd8dd30
+        security_group: launch-wizard-1
+        wait: yes
+        wait_timeout: 600
+        network:
+          assign_public_ip: true
+        # Wait until the EC2 instance has state running
+        state: running
+      register: ec2
+
+    - name: Print ec2
+      ansible.builtin.debug:
+        # Report the new EC2 instance public DNS
+        msg: "New instance address: {{ ec2.instances[0].public_dns_name }}"
+
+    # Here we add the new EC2 instance to the worker group in the hosts
+    - name: Add new EC2 instance to hosts
+      ansible.builtin.add_host:
+        name: "{{ ec2.instances[0].public_dns_name }}"
+        groups: worker
+
+    # After this the process is the same as in the configure-cluster assignment
+    - ansible.builtin.debug:
+        msg: "docker swarm init  | grep 'docker swarm join --token'"
+
+    - name: docker swarm init
+      ansible.builtin.shell: "docker swarm init | grep 'docker swarm join --token'"
+      become: yes
+      register: join_cmd
+
+    - name: Add join cmd to dummy host
+      ansible.builtin.add_host:
+        name: "join_cmd_holder"
+        cmd: "{{ join_cmd.stdout }}"
+        join_cmd: "{{ join_cmd }}"
+
+- hosts: worker
+  tasks:
+    - name: print join cmd
+      ansible.builtin.debug:
+        msg: "[Worker] {{ hostvars['join_cmd_holder']['cmd'] }}"
+
+    - name: join
+      ansible.builtin.debug:
+        msg: "Join command: {{ hostvars['join_cmd_holder']['join_cmd'] }}"
