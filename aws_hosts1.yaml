@@ -1,8 +1,0 @@
-[aws]
-ec2-54-172-172-216.compute-1.amazonaws.com
-ec2-3-95-66-209.compute-1.amazonaws.com
-
-[aws:vars]
-ansible_ssh_user=ubuntu
-ansible_ssh_private_key_file=/home/ubuntu/Lab4Key.pem
-ansible_ssh_common_args='-o StrictHostKeyChecking=no'
